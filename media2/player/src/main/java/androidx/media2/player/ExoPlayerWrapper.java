@@ -847,6 +847,7 @@ import java.util.Map;
         private final Context mContext;
         private final Listener mListener;
         private final SimpleExoPlayer mPlayer;
+        private final Handler mPlayerHandler;
         private final DataSource.Factory mDataSourceFactory;
         private final ConcatenatingMediaSource mConcatenatingMediaSource;
         private final ArrayDeque<MediaItemInfo> mMediaItemInfos;
@@ -859,6 +860,7 @@ import java.util.Map;
             mContext = context;
             mPlayer = player;
             mListener = listener;
+            mPlayerHandler = new Handler(mPlayer.getPlaybackLooper());
             String userAgent = Util.getUserAgent(context, USER_AGENT_NAME);
             mDataSourceFactory = new DefaultDataSourceFactory(context, userAgent);
             mConcatenatingMediaSource = new ConcatenatingMediaSource();
@@ -913,6 +915,12 @@ import java.util.Map;
             for (MediaItemInfo mediaItemInfo : oldMediaItemInfos) {
                 releaseMediaItem(mediaItemInfo);
             }
+
+            // NOTE: The ConcatenatingMediaSource class uses a Handler with playback looper
+            // internally and the addMediaSources() method delegates its main process to the
+            // Handler. The following method waits for the addMediaSources() completion by using
+            // a Handler with the same looper.
+            waitForMediaSourceInternalOperation();
         }
 
         public void preparePlayer() {
@@ -1052,6 +1060,21 @@ import java.util.Map;
             }
         }
 
+        private void waitForMediaSourceInternalOperation() {
+            Runnable waitHandler = new Runnable() {
+                @Override
+                public synchronized void run() {
+                    notify();
+                }
+            };
+            mPlayerHandler.post(waitHandler);
+            synchronized (waitHandler) {
+                try {
+                    waitHandler.wait();
+                } catch (InterruptedException e) {
+                }
+            }
+        }
     }
 
 }
