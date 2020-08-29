@@ -1060,20 +1060,32 @@ import java.util.Map;
             }
         }
 
-        private void waitForMediaSourceInternalOperation() {
-            Runnable waitHandler = new Runnable() {
-                @Override
-                public synchronized void run() {
+        static class HandlerQueueSynchronizer implements Runnable {
+            private boolean mFinished = false;
+
+            @Override
+            public void run() {
+                synchronized (this) {
+                    mFinished = true;
                     notify();
                 }
-            };
-            mPlayerHandler.post(waitHandler);
-            synchronized (waitHandler) {
-                try {
-                    waitHandler.wait();
-                } catch (InterruptedException e) {
+            }
+
+            public void sync(Handler handler) {
+                handler.post(this);
+                synchronized (this) {
+                    while (!mFinished) {
+                        try {
+                            wait();
+                        } catch (InterruptedException e) {
+                        }
+                    }
                 }
             }
+        }
+
+        private void waitForMediaSourceInternalOperation() {
+            new HandlerQueueSynchronizer().sync(mPlayerHandler);
         }
     }
 
